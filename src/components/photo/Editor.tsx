@@ -8,7 +8,6 @@ import {
   Redo2,
   RotateCw,
   RotateCcw,
-  Share2,
   SlidersHorizontal,
   Sparkles,
   Sun,
@@ -630,5 +629,3 @@ function ToolButton({
     </button>
   );
 }
-
-export const _unused = Share2;
