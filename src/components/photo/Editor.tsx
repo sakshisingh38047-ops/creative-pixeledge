@@ -323,14 +323,16 @@ export function Editor({
           }}
           className="relative flex min-w-0 flex-1 touch-none items-center justify-center overflow-hidden bg-canvas-bg"
         >
-          <canvas
-            ref={canvasRef}
-            className="max-h-full max-w-full select-none"
-            style={{
-              transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
-              transition: dragRef.current ? "none" : "transform 60ms linear",
-            }}
-          />
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
+            <canvas
+              ref={canvasRef}
+              className="max-h-full max-w-full select-none"
+              style={{
+                transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
+                transition: dragRef.current ? "none" : "transform 60ms linear",
+              }}
+            />
+          </div>
 
           {showOriginal && (
             <span className="pointer-events-none absolute top-4 left-1/2 -translate-x-1/2 rounded-full bg-black/70 px-3 py-1 text-xs font-medium text-white">
