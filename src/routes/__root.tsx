@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
+import { googleFontsHref } from "@/lib/photo/overlays";
 
 function NotFoundComponent() {
   return (
@@ -94,6 +95,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap",
       },
+      { rel: "stylesheet", href: googleFontsHref },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
     ],
   }),

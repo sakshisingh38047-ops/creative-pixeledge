@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
+  Brush,
   Crop,
   Eye,
   FlipHorizontal,
@@ -9,9 +10,11 @@ import {
   RotateCw,
   RotateCcw,
   SlidersHorizontal,
+  Smile,
   Sparkles,
   Sun,
   Moon,
+  Type,
   Undo2,
   ZoomIn,
   ZoomOut,
@@ -23,6 +26,12 @@ import { adjustmentMeta } from "@/lib/photo/adjustments";
 import { filterGroups, filterPresets } from "@/lib/photo/filters";
 import { outputSize, renderToCanvas } from "@/lib/photo/render";
 import {
+  uid,
+  type Overlays,
+  type StickerItem,
+  type TextItem,
+} from "@/lib/photo/overlays";
+import {
   defaultAdjustments,
   defaultEditState,
   type Adjustments,
@@ -32,15 +41,22 @@ import { cn } from "@/lib/utils";
 import { AdjustSlider } from "./AdjustSlider";
 import { FilterThumb } from "./FilterThumb";
 import { ExportDialog, type ExportOptions } from "./ExportDialog";
+import { OverlayLayer, type BrushSettings } from "./OverlayLayer";
+import { TextPanel } from "./TextPanel";
+import { StickerPanel } from "./StickerPanel";
+import { DrawPanel } from "./DrawPanel";
 
-type Tab = "Filters" | "Light" | "Color" | "Detail" | "Effects" | "Crop";
+type Tab = "Filters" | "Light" | "Color" | "Detail" | "Effects" | "Crop" | "Text" | "Stickers" | "Draw";
 const TABS: { id: Tab; icon: typeof Crop }[] = [
+  { id: "Crop", icon: Crop },
   { id: "Filters", icon: Sparkles },
+  { id: "Text", icon: Type },
+  { id: "Stickers", icon: Smile },
+  { id: "Draw", icon: Brush },
   { id: "Light", icon: Sun },
   { id: "Color", icon: SlidersHorizontal },
   { id: "Detail", icon: Eye },
   { id: "Effects", icon: Sparkles },
-  { id: "Crop", icon: Crop },
 ];
 
 const ASPECTS: { label: string; value: number | null }[] = [
@@ -79,22 +95,53 @@ export function Editor({
   const [busy, setBusy] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [fit, setFit] = useState({ w: 0, h: 0 });
+  const [brush, setBrush] = useState<BrushSettings>({
+    color: "#ffcc00",
+    size: 0.012,
+    opacity: 1,
+    erase: false,
+  });
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
 
   const dimensions = useMemo(() => outputSize(image, state), [image, state]);
+  const drawMode = tab === "Draw";
 
   // Render preview whenever the edit state changes.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const id = requestAnimationFrame(() => {
-      renderToCanvas(canvas, image, showOriginal ? defaultEditState : state, 1800);
+      renderToCanvas(
+        canvas,
+        image,
+        showOriginal ? defaultEditState : { ...state, overlays: { items: [], strokes: [] } },
+        1800,
+      );
     });
     return () => cancelAnimationFrame(id);
   }, [image, state, showOriginal]);
+
+  // Keep the stage box matched to the photo aspect so overlays line up exactly.
+  useLayoutEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const measure = () => {
+      const rect = el.getBoundingClientRect();
+      const availW = Math.max(40, rect.width - 32);
+      const availH = Math.max(40, rect.height - 32);
+      const scale = Math.min(availW / dimensions.w, availH / dimensions.h);
+      setFit({ w: Math.round(dimensions.w * scale), h: Math.round(dimensions.h * scale) });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [dimensions.w, dimensions.h]);
 
   const commit = useCallback(
     (next: EditState) => {
@@ -108,10 +155,14 @@ export function Editor({
   const patchAdjustment = (key: keyof Adjustments, value: number) => {
     setState((s) => ({ ...s, adjustments: { ...s.adjustments, [key]: value } }));
   };
-  const beginAdjustment = () => {
+  const beginAdjustment = useCallback(() => {
     setPast((p) => [...p.slice(-49), state]);
     setFuture([]);
-  };
+  }, [state]);
+
+  const setOverlays = useCallback((overlays: Overlays) => {
+    setState((s) => ({ ...s, overlays }));
+  }, []);
 
   const undo = useCallback(() => {
     setPast((p) => {
@@ -135,6 +186,8 @@ export function Editor({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && /INPUT|TEXTAREA/.test(target.tagName)) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
         if (e.shiftKey) redo();
@@ -190,21 +243,38 @@ export function Editor({
       canvas.toBlob((b) => resolve(b), opts.format, opts.quality / 100);
     });
 
+  const saveBlob = (blob: Blob, ext: string) => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${fileName.replace(/\.[^.]+$/, "")}-photopro.${ext}`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
   const handleExport = async (opts: ExportOptions) => {
     setBusy(true);
     try {
       const blob = await toBlob(opts);
       if (!blob) throw new Error("export failed");
-      const ext = opts.format.split("/")[1]!.replace("jpeg", "jpg");
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `${fileName.replace(/\.[^.]+$/, "")}-photopro.${ext}`;
-      a.click();
-      URL.revokeObjectURL(a.href);
+      saveBlob(blob, opts.format.split("/")[1]!.replace("jpeg", "jpg"));
       toast.success("Photo saved to your downloads");
       setExportOpen(false);
     } catch {
       toast.error("Could not export the photo");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const quickHd = async () => {
+    setBusy(true);
+    try {
+      const blob = await toBlob({ format: "image/jpeg", quality: 95, maxDimension: 1920 });
+      if (!blob) throw new Error("no blob");
+      saveBlob(blob, "jpg");
+      toast.success("HD photo saved to your downloads");
+    } catch {
+      toast.error("Could not save the photo");
     } finally {
       setBusy(false);
     }
@@ -231,15 +301,79 @@ export function Editor({
     }
   };
 
+  /* ------------------------------------------------------------ overlays */
+
+  const selectedItem = state.overlays.items.find((i) => i.id === selectedId) ?? null;
+  const selectedText = selectedItem?.kind === "text" ? (selectedItem as TextItem) : null;
+
+  const addText = () => {
+    const item: TextItem = {
+      id: uid(),
+      kind: "text",
+      text: "Your text",
+      x: 0.5,
+      y: 0.5,
+      size: 0.12,
+      rotation: 0,
+      font: "Anton",
+      color: "#ffffff",
+      strokeColor: "#000000",
+      strokeWidth: 0,
+      shadow: 0.4,
+      opacity: 1,
+      bold: false,
+      italic: false,
+    };
+    commit({ ...state, overlays: { ...state.overlays, items: [...state.overlays.items, item] } });
+    setSelectedId(item.id);
+    setTab("Text");
+  };
+
+  const addSticker = (char: string) => {
+    const item: StickerItem = {
+      id: uid(),
+      kind: "sticker",
+      char,
+      x: 0.5,
+      y: 0.5,
+      size: 0.2,
+      rotation: 0,
+      opacity: 1,
+    };
+    commit({ ...state, overlays: { ...state.overlays, items: [...state.overlays.items, item] } });
+    setSelectedId(item.id);
+  };
+
+  const patchSelected = (patch: Partial<TextItem>) => {
+    if (!selectedId) return;
+    setState((s) => ({
+      ...s,
+      overlays: {
+        ...s.overlays,
+        items: s.overlays.items.map((i) =>
+          i.id === selectedId && i.kind === "text" ? { ...i, ...patch } : i,
+        ),
+      },
+    }));
+  };
+
+  const deleteItem = (id: string) => {
+    commit({
+      ...state,
+      overlays: { ...state.overlays, items: state.overlays.items.filter((i) => i.id !== id) },
+    });
+    setSelectedId(null);
+  };
+
   const groupSliders = adjustmentMeta.filter((m) => m.group === tab);
   const activePreset = filterPresets.find((p) => p.id === state.filterId);
-  const isEdited =
-    JSON.stringify(state) !== JSON.stringify(defaultEditState);
+  const isEdited = JSON.stringify(state) !== JSON.stringify(defaultEditState);
+  const layerCount = state.overlays.items.length;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-surface-1">
       {/* Top bar */}
-      <header className="flex items-center justify-between gap-2 border-b border-border bg-surface-2 px-3 py-2.5">
+      <header className="flex items-center justify-between gap-2 border-b border-border bg-surface-2 px-2 py-2 sm:px-3">
         <div className="flex items-center gap-1">
           <button
             type="button"
@@ -252,7 +386,7 @@ export function Editor({
           <span className="hidden max-w-45 truncate text-sm font-medium sm:block">{fileName}</span>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5 sm:gap-1">
           <button
             type="button"
             onClick={undo}
@@ -277,7 +411,7 @@ export function Editor({
             onPointerUp={() => setShowOriginal(false)}
             onPointerLeave={() => setShowOriginal(false)}
             className={cn(
-              "flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-medium transition-colors",
+              "flex items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium transition-colors",
               showOriginal
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -296,10 +430,18 @@ export function Editor({
           </button>
           <button
             type="button"
-            onClick={() => setExportOpen(true)}
-            className="ml-1 flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+            onClick={quickHd}
+            disabled={busy}
+            className="ml-1 flex items-center gap-1.5 rounded-lg bg-primary px-2.5 py-2 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
           >
             <Download className="size-4" />
+            HD
+          </button>
+          <button
+            type="button"
+            onClick={() => setExportOpen(true)}
+            className="rounded-lg border border-border bg-secondary px-2.5 py-2 text-xs font-semibold transition-colors hover:bg-muted"
+          >
             Export
           </button>
         </div>
@@ -310,8 +452,9 @@ export function Editor({
         <div
           ref={viewportRef}
           onPointerDown={(e) => {
+            if (drawMode) return;
+            if (e.target !== viewportRef.current) return;
             dragRef.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y };
-            (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
           }}
           onPointerMove={(e) => {
             const d = dragRef.current;
@@ -323,15 +466,30 @@ export function Editor({
           }}
           className="relative flex min-w-0 flex-1 touch-none items-center justify-center overflow-hidden bg-canvas-bg"
         >
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
-            <canvas
-              ref={canvasRef}
-              className="max-h-full max-w-full select-none"
-              style={{
-                transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
-                transition: dragRef.current ? "none" : "transform 60ms linear",
-              }}
-            />
+          <div
+            className="relative"
+            style={{
+              width: fit.w || 1,
+              height: fit.h || 1,
+              transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
+              transition: dragRef.current ? "none" : "transform 60ms linear",
+            }}
+          >
+            <canvas ref={canvasRef} className="absolute inset-0 h-full w-full select-none" />
+            {!showOriginal && fit.w > 0 && (
+              <OverlayLayer
+                overlays={state.overlays}
+                width={fit.w}
+                height={fit.h}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                onBegin={beginAdjustment}
+                onChange={setOverlays}
+                onDelete={deleteItem}
+                drawMode={drawMode}
+                brush={brush}
+              />
+            )}
           </div>
 
           {showOriginal && (
@@ -340,7 +498,7 @@ export function Editor({
             </span>
           )}
 
-          <div className="absolute right-4 bottom-4 flex items-center gap-1 rounded-xl border border-border bg-surface-2/90 p-1 backdrop-blur">
+          <div className="absolute right-3 bottom-3 flex items-center gap-1 rounded-xl border border-border bg-surface-2/90 p-1 backdrop-blur">
             <button
               type="button"
               onClick={() => setZoom((z) => Math.max(MIN_ZOOM, z / 1.3))}
@@ -370,7 +528,7 @@ export function Editor({
             </button>
           </div>
 
-          <span className="absolute bottom-4 left-4 rounded-lg border border-border bg-surface-2/90 px-2.5 py-1 text-[11px] tabular-nums text-muted-foreground backdrop-blur">
+          <span className="absolute bottom-3 left-3 rounded-lg border border-border bg-surface-2/90 px-2.5 py-1 text-[11px] tabular-nums text-muted-foreground backdrop-blur">
             {dimensions.w} × {dimensions.h}
           </span>
         </div>
@@ -392,25 +550,60 @@ export function Editor({
               }`}
             />
             <StackRow label="History" value={`${past.length} step${past.length === 1 ? "" : "s"}`} />
+
+            {layerCount > 0 && (
+              <div className="space-y-1.5 pt-2">
+                <p className="text-[10px] font-semibold tracking-widest text-muted-foreground">
+                  LAYERS
+                </p>
+                {state.overlays.items
+                  .slice()
+                  .reverse()
+                  .map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedId(item.id);
+                        setTab(item.kind === "text" ? "Text" : "Stickers");
+                      }}
+                      className={cn(
+                        "flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left text-xs transition-colors",
+                        selectedId === item.id
+                          ? "border-primary bg-primary/15 text-primary"
+                          : "border-border bg-secondary hover:bg-muted",
+                      )}
+                    >
+                      <span className="truncate">
+                        {item.kind === "text" ? item.text || "Text" : item.char}
+                      </span>
+                      <span className="text-muted-foreground">{item.kind}</span>
+                    </button>
+                  ))}
+              </div>
+            )}
+            {state.overlays.strokes.length > 0 && (
+              <StackRow label="Brush strokes" value={`${state.overlays.strokes.length}`} />
+            )}
+
             <button
               type="button"
               disabled={!isEdited}
-              onClick={() => commit(defaultEditState)}
+              onClick={() => {
+                commit(defaultEditState);
+                setSelectedId(null);
+              }}
               className="mt-2 w-full rounded-xl border border-border bg-secondary px-3 py-2 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-40"
             >
               Reset all edits
             </button>
-            <p className="pt-4 text-[11px] leading-relaxed text-muted-foreground">
-              Layers, masks, blend modes, text and AI tools land in the next stages — the edit stack
-              above is where they will appear.
-            </p>
           </div>
         </aside>
       </div>
 
       {/* Bottom toolbar */}
       <section className="border-t border-border bg-surface-2">
-        <div className="max-h-64 overflow-y-auto px-4 py-3">
+        <div className="max-h-64 overflow-y-auto px-3 py-3 sm:px-4">
           {tab === "Filters" && (
             <div className="space-y-3">
               {activePreset && activePreset.id !== "original" && (
@@ -447,6 +640,35 @@ export function Editor({
                 </div>
               ))}
             </div>
+          )}
+
+          {tab === "Text" && (
+            <TextPanel
+              item={selectedText}
+              onAdd={addText}
+              onPatch={patchSelected}
+              onDelete={() => selectedId && deleteItem(selectedId)}
+              onBegin={beginAdjustment}
+            />
+          )}
+
+          {tab === "Stickers" && <StickerPanel onAdd={addSticker} />}
+
+          {tab === "Draw" && (
+            <DrawPanel
+              brush={brush}
+              onChange={(patch) => setBrush((b) => ({ ...b, ...patch }))}
+              strokeCount={state.overlays.strokes.length}
+              onUndoStroke={() =>
+                commit({
+                  ...state,
+                  overlays: { ...state.overlays, strokes: state.overlays.strokes.slice(0, -1) },
+                })
+              }
+              onClear={() =>
+                commit({ ...state, overlays: { ...state.overlays, strokes: [] } })
+              }
+            />
           )}
 
           {tab === "Crop" && (
@@ -527,7 +749,7 @@ export function Editor({
             </div>
           )}
 
-          {tab !== "Filters" && tab !== "Crop" && (
+          {(tab === "Light" || tab === "Color" || tab === "Detail" || tab === "Effects") && (
             <div className="grid gap-x-8 sm:grid-cols-2">
               {groupSliders.map((meta) => (
                 <AdjustSlider
@@ -563,14 +785,14 @@ export function Editor({
           )}
         </div>
 
-        <nav className="flex items-center justify-around border-t border-border px-2 py-1.5">
+        <nav className="no-scrollbar flex items-center gap-1 overflow-x-auto border-t border-border px-2 py-1.5">
           {TABS.map((t) => (
             <button
               key={t.id}
               type="button"
               onClick={() => setTab(t.id)}
               className={cn(
-                "flex flex-1 flex-col items-center gap-1 rounded-xl py-2 text-[10px] font-medium tracking-wide transition-colors",
+                "flex min-w-16 flex-1 shrink-0 flex-col items-center gap-1 rounded-xl py-2 text-[10px] font-medium tracking-wide transition-colors",
                 tab === t.id
                   ? "bg-primary/15 text-primary"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground",

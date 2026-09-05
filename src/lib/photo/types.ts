@@ -1,3 +1,5 @@
+import type { Overlays } from "./overlays";
+
 export type Adjustments = {
   brightness: number;
   contrast: number;
@@ -48,6 +50,7 @@ export const defaultGeometry: Geometry = {
 
 export type EditState = {
   adjustments: Adjustments;
+  overlays: Overlays;
   geometry: Geometry;
   filterId: string;
   filterStrength: number;
@@ -55,6 +58,7 @@ export type EditState = {
 
 export const defaultEditState: EditState = {
   adjustments: { ...defaultAdjustments },
+  overlays: { items: [], strokes: [] },
   geometry: { ...defaultGeometry },
   filterId: "original",
   filterStrength: 100,
