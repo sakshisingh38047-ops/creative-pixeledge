@@ -115,16 +115,17 @@ export function OverlayLayer({
     const startAngle = Math.atan2(e.clientY - cy, e.clientX - cx);
 
     const onMove = (ev: PointerEvent) => {
-      const patch: Record<string, number> = {};
+      const patch: Partial<Record<"x" | "y" | "size" | "rotation", number>> = {};
       if (mode === "move") {
-        patch.x = Math.min(1.2, Math.max(-0.2, base.x + (ev.clientX - start.x) / rect.width));
-        patch.y = Math.min(1.2, Math.max(-0.2, base.y + (ev.clientY - start.y) / rect.height));
+        patch["x"] = Math.min(1.2, Math.max(-0.2, base.x + (ev.clientX - start.x) / rect.width));
+        patch["y"] = Math.min(1.2, Math.max(-0.2, base.y + (ev.clientY - start.y) / rect.height));
       } else {
         const dist = Math.hypot(ev.clientX - cx, ev.clientY - cy);
-        patch.size = Math.min(2, Math.max(0.02, base.size * (dist / startDist)));
+        patch["size"] = Math.min(2, Math.max(0.02, base.size * (dist / startDist)));
         const angle = Math.atan2(ev.clientY - cy, ev.clientX - cx);
-        patch.rotation = base.rotation + ((angle - startAngle) * 180) / Math.PI;
+        patch["rotation"] = base.rotation + ((angle - startAngle) * 180) / Math.PI;
       }
+
       onChange({
         ...overlays,
         items: overlays.items.map((i) => (i.id === id ? { ...i, ...patch } : i)),
