@@ -1,5 +1,6 @@
 import type { Adjustments, EditState } from "./types";
 import { applyFilterToAdjustments, filterPresets } from "./filters";
+import { drawOverlays } from "./overlays";
 
 export function cssFilterString(a: Adjustments): string {
   const brightness = 1 + a.brightness / 100 + a.exposure / 140;
@@ -145,6 +146,11 @@ export function renderToCanvas(
     ctx.fillStyle = grd;
     ctx.fillRect(0, 0, w, h);
     ctx.restore();
+  }
+
+  // Text, stickers and brush strokes
+  if (state.overlays && (state.overlays.items.length || state.overlays.strokes.length)) {
+    drawOverlays(ctx, w, h, state.overlays);
   }
 }
 
