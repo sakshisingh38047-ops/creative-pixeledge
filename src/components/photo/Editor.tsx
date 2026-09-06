@@ -20,6 +20,8 @@ import {
   ZoomOut,
   Download,
   RefreshCw,
+  Wand2,
+
 } from "lucide-react";
 import { toast } from "sonner";
 import { adjustmentMeta } from "@/lib/photo/adjustments";
