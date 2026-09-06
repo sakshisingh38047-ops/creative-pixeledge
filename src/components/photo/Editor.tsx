@@ -185,9 +185,9 @@ export function Editor({
     setState((s) => ({ ...s, adjustments: { ...s.adjustments, [key]: value } }));
   };
   const beginAdjustment = useCallback(() => {
-    setPast((p) => [...p.slice(-49), state]);
+    setPast((p) => [...p.slice(-49), { state, base }]);
     setFuture([]);
-  }, [state]);
+  }, [state, base]);
 
   const setOverlays = useCallback((overlays: Overlays) => {
     setState((s) => ({ ...s, overlays }));
@@ -197,21 +197,24 @@ export function Editor({
     setPast((p) => {
       if (!p.length) return p;
       const prev = p[p.length - 1]!;
-      setFuture((fu) => [state, ...fu]);
-      setState(prev);
+      setFuture((fu) => [{ state, base }, ...fu]);
+      setState(prev.state);
+      setBase(prev.base);
       return p.slice(0, -1);
     });
-  }, [state]);
+  }, [state, base]);
 
   const redo = useCallback(() => {
     setFuture((fu) => {
       if (!fu.length) return fu;
       const next = fu[0]!;
-      setPast((p) => [...p, state]);
-      setState(next);
+      setPast((p) => [...p, { state, base }]);
+      setState(next.state);
+      setBase(next.base);
       return fu.slice(1);
     });
-  }, [state]);
+  }, [state, base]);
+
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
