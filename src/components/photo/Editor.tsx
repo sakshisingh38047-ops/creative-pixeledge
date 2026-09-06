@@ -709,7 +709,20 @@ export function Editor({
             </h2>
           </div>
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
+            <button
+              type="button"
+              onClick={() => setTab("AI")}
+              className={cn(
+                "flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-xs font-semibold transition-colors",
+                tab === "AI"
+                  ? "bg-primary text-primary-foreground"
+                  : "border border-border bg-secondary hover:bg-muted",
+              )}
+            >
+              <Wand2 className="size-4" /> AI Tools
+            </button>
             <StackRow label="Base photo" value={`${base.width} × ${base.height}`} />
+
             <StackRow label="Filter" value={activePreset?.name ?? "Original"} />
             <StackRow
               label="Geometry"
