@@ -294,10 +294,106 @@ export function Editor({
     setOffset({ x: 0, y: 0 });
   };
 
+  /* ------------------------------------------------------------- AI actions */
+
+  /** Runs an AI job that produces a new base photo, with progress + history. */
+  const runAi = useCallback(
+    async (
+      tool: AiTool,
+      job: (report: (r: number) => void) => Promise<HTMLCanvasElement | null> | HTMLCanvasElement | null,
+      successMessage: string,
+    ) => {
+      if (busyTool) return;
+      setBusyTool(tool);
+      setAiProgress(0.03);
+      try {
+        // Let the spinner paint before the heavy synchronous pixel work starts.
+        await new Promise((r) => setTimeout(r, 30));
+        const result = await job(setAiProgress);
+        if (!result) return;
+        const img = await canvasToImage(result);
+        commitBase(img);
+        setAiProgress(1);
+        toast.success(successMessage);
+      } catch {
+        toast.error("That didn't work on this photo — try again");
+      } finally {
+        setBusyTool(null);
+        setAiProgress(0);
+      }
+    },
+    [busyTool, commitBase],
+  );
+
+  const handleRemoveBg = () =>
+    runAi(
+      "bg",
+      async (report) => {
+        const cut = await removeBackground(base, report);
+        setCutout(cut);
+        return cut;
+      },
+      "Background removed",
+    );
+
+  const handleBackground = (choice: BackgroundChoice) => {
+    if (!cutout) return;
+    void runAi("bg", () => composeBackground(cutout, base, choice), "Background updated");
+  };
+
+  const handleEraseObject = () => {
+    if (!maskStrokes.length) return;
+    void runAi(
+      "object",
+      (report) => {
+        const mask = buildMaskCanvas(base.width, base.height, maskStrokes);
+        report(0.4);
+        const out = inpaint(base, mask);
+        setMaskStrokes([]);
+        return out;
+      },
+      "Object removed",
+    );
+  };
+
+  const handleEnhance = (factor: 2 | 4) =>
+    runAi("enhance", (report) => {
+      report(0.3);
+      return upscaleEnhance(base, factor);
+    }, `Photo enhanced ${factor}×`);
+
+  const handleAutoAdjust = () => {
+    setBusyTool("auto");
+    setAiProgress(0.4);
+    try {
+      const patch = autoAdjust(base);
+      commit({ ...state, adjustments: { ...state.adjustments, ...patch } });
+      toast.success("Auto fix applied");
+    } catch {
+      toast.error("Auto fix didn't work on this photo");
+    } finally {
+      setBusyTool(null);
+      setAiProgress(0);
+    }
+  };
+
+  const handleRetouch = () =>
+    runAi("retouch", (report) => {
+      report(0.35);
+      return retouchOp(base, retouchSettings);
+    }, "Retouch applied");
+
+  const handleArt = (styleId: string) =>
+    runAi("art", (report) => {
+      report(0.35);
+      return applyArtStyle(base, styleId, artStrength);
+    }, "Style applied");
+
   const renderFull = (maxDimension: number | null) => {
     const canvas = document.createElement("canvas");
-    renderToCanvas(canvas, image, state, maxDimension ?? undefined);
+    renderToCanvas(canvas, base, state, maxDimension ?? undefined);
     return canvas;
+
   };
 
   const toBlob = (opts: ExportOptions) =>
