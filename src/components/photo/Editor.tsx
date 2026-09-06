@@ -87,8 +87,9 @@ export function Editor({
   onToggleTheme: () => void;
 }) {
   const [state, setState] = useState<EditState>(defaultEditState);
-  const [past, setPast] = useState<EditState[]>([]);
-  const [future, setFuture] = useState<EditState[]>([]);
+  const [base, setBase] = useState<HTMLImageElement>(image);
+  const [past, setPast] = useState<Snapshot[]>([]);
+  const [future, setFuture] = useState<Snapshot[]>([]);
   const [tab, setTab] = useState<Tab>("Filters");
   const [showOriginal, setShowOriginal] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -104,12 +105,28 @@ export function Editor({
     erase: false,
   });
 
+  /* --------------------------------------------------------------- AI state */
+  const [aiTool, setAiTool] = useState<AiTool>("bg");
+  const [busyTool, setBusyTool] = useState<AiTool | null>(null);
+  const [aiProgress, setAiProgress] = useState(0);
+  const [cutout, setCutout] = useState<HTMLCanvasElement | null>(null);
+  const [bgBlur, setBgBlur] = useState(60);
+  const [maskStrokes, setMaskStrokes] = useState<MaskStroke[]>([]);
+  const [maskBrush, setMaskBrush] = useState(0.05);
+  const [retouchSettings, setRetouchSettings] = useState<RetouchSettings>({
+    smooth: 0.5,
+    teeth: 0.3,
+    eyes: 0.3,
+  });
+  const [artStrength, setArtStrength] = useState(1);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
 
-  const dimensions = useMemo(() => outputSize(image, state), [image, state]);
+  const dimensions = useMemo(() => outputSize(base, state), [base, state]);
   const drawMode = tab === "Draw";
+  const maskMode = tab === "AI" && aiTool === "object";
 
   // Render preview whenever the edit state changes.
   useEffect(() => {
@@ -118,13 +135,13 @@ export function Editor({
     const id = requestAnimationFrame(() => {
       renderToCanvas(
         canvas,
-        image,
+        base,
         showOriginal ? defaultEditState : { ...state, overlays: { items: [], strokes: [] } },
         1800,
       );
     });
     return () => cancelAnimationFrame(id);
-  }, [image, state, showOriginal]);
+  }, [base, state, showOriginal]);
 
   // Keep the stage box matched to the photo aspect so overlays line up exactly.
   useLayoutEffect(() => {
@@ -145,12 +162,24 @@ export function Editor({
 
   const commit = useCallback(
     (next: EditState) => {
-      setPast((p) => [...p.slice(-49), state]);
+      setPast((p) => [...p.slice(-49), { state, base }]);
       setFuture([]);
       setState(next);
     },
-    [state],
+    [state, base],
   );
+
+  /** Records an AI result (a whole new base photo) as one undoable step. */
+  const commitBase = useCallback(
+    (nextBase: HTMLImageElement, nextState?: EditState) => {
+      setPast((p) => [...p.slice(-49), { state, base }]);
+      setFuture([]);
+      setBase(nextBase);
+      if (nextState) setState(nextState);
+    },
+    [state, base],
+  );
+
 
   const patchAdjustment = (key: keyof Adjustments, value: number) => {
     setState((s) => ({ ...s, adjustments: { ...s.adjustments, [key]: value } }));
