@@ -37,6 +37,19 @@ import {
   type Adjustments,
   type EditState,
 } from "@/lib/photo/types";
+import {
+  applyArtStyle,
+  autoAdjust,
+  canvasToImage,
+  composeBackground,
+  inpaint,
+  retouch as retouchOp,
+  toCanvas,
+  upscaleEnhance,
+  type BackgroundChoice,
+  type RetouchSettings,
+} from "@/lib/photo/ai/ops";
+import { removeBackground } from "@/lib/photo/ai/bgRemoval";
 import { cn } from "@/lib/utils";
 import { AdjustSlider } from "./AdjustSlider";
 import { FilterThumb } from "./FilterThumb";
@@ -45,9 +58,24 @@ import { OverlayLayer, type BrushSettings } from "./OverlayLayer";
 import { TextPanel } from "./TextPanel";
 import { StickerPanel } from "./StickerPanel";
 import { DrawPanel } from "./DrawPanel";
+import { AiPanel, type AiTool } from "./AiPanel";
+import { MaskLayer, buildMaskCanvas, type MaskStroke } from "./MaskLayer";
 
-type Tab = "Filters" | "Light" | "Color" | "Detail" | "Effects" | "Crop" | "Text" | "Stickers" | "Draw";
+type Snapshot = { state: EditState; base: HTMLImageElement };
+
+type Tab =
+  | "Filters"
+  | "Light"
+  | "Color"
+  | "Detail"
+  | "Effects"
+  | "Crop"
+  | "Text"
+  | "Stickers"
+  | "Draw"
+  | "AI";
 const TABS: { id: Tab; icon: typeof Crop }[] = [
+  { id: "AI", icon: Wand2 },
   { id: "Crop", icon: Crop },
   { id: "Filters", icon: Sparkles },
   { id: "Text", icon: Type },
@@ -58,6 +86,7 @@ const TABS: { id: Tab; icon: typeof Crop }[] = [
   { id: "Detail", icon: Eye },
   { id: "Effects", icon: Sparkles },
 ];
+
 
 const ASPECTS: { label: string; value: number | null }[] = [
   { label: "Original", value: null },
