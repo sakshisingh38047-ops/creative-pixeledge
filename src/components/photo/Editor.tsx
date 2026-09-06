@@ -46,7 +46,6 @@ import {
   composeBackground,
   inpaint,
   retouch as retouchOp,
-  toCanvas,
   upscaleEnhance,
   type BackgroundChoice,
   type RetouchSettings,
