@@ -810,6 +810,34 @@ export function Editor({
             </div>
           )}
 
+          {tab === "AI" && (
+            <AiPanel
+              tool={aiTool}
+              onToolChange={setAiTool}
+              busyTool={busyTool}
+              progress={aiProgress}
+              hasCutout={!!cutout}
+              onRemoveBg={handleRemoveBg}
+              onBackground={handleBackground}
+              bgBlur={bgBlur}
+              onBgBlurChange={setBgBlur}
+              maskStrokes={maskStrokes.length}
+              brushSize={maskBrush}
+              onBrushSize={setMaskBrush}
+              onClearMask={() => setMaskStrokes([])}
+              onEraseObject={handleEraseObject}
+              onEnhance={handleEnhance}
+              onAutoAdjust={handleAutoAdjust}
+              retouch={retouchSettings}
+              onRetouchChange={(patch) => setRetouchSettings((r) => ({ ...r, ...patch }))}
+              onApplyRetouch={handleRetouch}
+              artStrength={artStrength}
+              onArtStrength={setArtStrength}
+              onApplyArt={handleArt}
+            />
+          )}
+
+
           {tab === "Text" && (
             <TextPanel
               item={selectedText}
