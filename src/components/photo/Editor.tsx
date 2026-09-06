@@ -20,6 +20,8 @@ import {
   ZoomOut,
   Download,
   RefreshCw,
+  Wand2,
+
 } from "lucide-react";
 import { toast } from "sonner";
 import { adjustmentMeta } from "@/lib/photo/adjustments";
@@ -37,6 +39,18 @@ import {
   type Adjustments,
   type EditState,
 } from "@/lib/photo/types";
+import {
+  applyArtStyle,
+  autoAdjust,
+  canvasToImage,
+  composeBackground,
+  inpaint,
+  retouch as retouchOp,
+  upscaleEnhance,
+  type BackgroundChoice,
+  type RetouchSettings,
+} from "@/lib/photo/ai/ops";
+import { removeBackground } from "@/lib/photo/ai/bgRemoval";
 import { cn } from "@/lib/utils";
 import { AdjustSlider } from "./AdjustSlider";
 import { FilterThumb } from "./FilterThumb";
@@ -45,9 +59,24 @@ import { OverlayLayer, type BrushSettings } from "./OverlayLayer";
 import { TextPanel } from "./TextPanel";
 import { StickerPanel } from "./StickerPanel";
 import { DrawPanel } from "./DrawPanel";
+import { AiPanel, type AiTool } from "./AiPanel";
+import { MaskLayer, buildMaskCanvas, type MaskStroke } from "./MaskLayer";
 
-type Tab = "Filters" | "Light" | "Color" | "Detail" | "Effects" | "Crop" | "Text" | "Stickers" | "Draw";
+type Snapshot = { state: EditState; base: HTMLImageElement };
+
+type Tab =
+  | "Filters"
+  | "Light"
+  | "Color"
+  | "Detail"
+  | "Effects"
+  | "Crop"
+  | "Text"
+  | "Stickers"
+  | "Draw"
+  | "AI";
 const TABS: { id: Tab; icon: typeof Crop }[] = [
+  { id: "AI", icon: Wand2 },
   { id: "Crop", icon: Crop },
   { id: "Filters", icon: Sparkles },
   { id: "Text", icon: Type },
@@ -58,6 +87,7 @@ const TABS: { id: Tab; icon: typeof Crop }[] = [
   { id: "Detail", icon: Eye },
   { id: "Effects", icon: Sparkles },
 ];
+
 
 const ASPECTS: { label: string; value: number | null }[] = [
   { label: "Original", value: null },
@@ -87,8 +117,9 @@ export function Editor({
   onToggleTheme: () => void;
 }) {
   const [state, setState] = useState<EditState>(defaultEditState);
-  const [past, setPast] = useState<EditState[]>([]);
-  const [future, setFuture] = useState<EditState[]>([]);
+  const [base, setBase] = useState<HTMLImageElement>(image);
+  const [past, setPast] = useState<Snapshot[]>([]);
+  const [future, setFuture] = useState<Snapshot[]>([]);
   const [tab, setTab] = useState<Tab>("Filters");
   const [showOriginal, setShowOriginal] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -104,12 +135,28 @@ export function Editor({
     erase: false,
   });
 
+  /* --------------------------------------------------------------- AI state */
+  const [aiTool, setAiTool] = useState<AiTool>("bg");
+  const [busyTool, setBusyTool] = useState<AiTool | null>(null);
+  const [aiProgress, setAiProgress] = useState(0);
+  const [cutout, setCutout] = useState<HTMLCanvasElement | null>(null);
+  const [bgBlur, setBgBlur] = useState(60);
+  const [maskStrokes, setMaskStrokes] = useState<MaskStroke[]>([]);
+  const [maskBrush, setMaskBrush] = useState(0.05);
+  const [retouchSettings, setRetouchSettings] = useState<RetouchSettings>({
+    smooth: 0.5,
+    teeth: 0.3,
+    eyes: 0.3,
+  });
+  const [artStrength, setArtStrength] = useState(1);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
 
-  const dimensions = useMemo(() => outputSize(image, state), [image, state]);
+  const dimensions = useMemo(() => outputSize(base, state), [base, state]);
   const drawMode = tab === "Draw";
+  const maskMode = tab === "AI" && aiTool === "object";
 
   // Render preview whenever the edit state changes.
   useEffect(() => {
@@ -118,13 +165,13 @@ export function Editor({
     const id = requestAnimationFrame(() => {
       renderToCanvas(
         canvas,
-        image,
+        base,
         showOriginal ? defaultEditState : { ...state, overlays: { items: [], strokes: [] } },
         1800,
       );
     });
     return () => cancelAnimationFrame(id);
-  }, [image, state, showOriginal]);
+  }, [base, state, showOriginal]);
 
   // Keep the stage box matched to the photo aspect so overlays line up exactly.
   useLayoutEffect(() => {
@@ -145,20 +192,32 @@ export function Editor({
 
   const commit = useCallback(
     (next: EditState) => {
-      setPast((p) => [...p.slice(-49), state]);
+      setPast((p) => [...p.slice(-49), { state, base }]);
       setFuture([]);
       setState(next);
     },
-    [state],
+    [state, base],
   );
+
+  /** Records an AI result (a whole new base photo) as one undoable step. */
+  const commitBase = useCallback(
+    (nextBase: HTMLImageElement, nextState?: EditState) => {
+      setPast((p) => [...p.slice(-49), { state, base }]);
+      setFuture([]);
+      setBase(nextBase);
+      if (nextState) setState(nextState);
+    },
+    [state, base],
+  );
+
 
   const patchAdjustment = (key: keyof Adjustments, value: number) => {
     setState((s) => ({ ...s, adjustments: { ...s.adjustments, [key]: value } }));
   };
   const beginAdjustment = useCallback(() => {
-    setPast((p) => [...p.slice(-49), state]);
+    setPast((p) => [...p.slice(-49), { state, base }]);
     setFuture([]);
-  }, [state]);
+  }, [state, base]);
 
   const setOverlays = useCallback((overlays: Overlays) => {
     setState((s) => ({ ...s, overlays }));
@@ -168,21 +227,24 @@ export function Editor({
     setPast((p) => {
       if (!p.length) return p;
       const prev = p[p.length - 1]!;
-      setFuture((fu) => [state, ...fu]);
-      setState(prev);
+      setFuture((fu) => [{ state, base }, ...fu]);
+      setState(prev.state);
+      setBase(prev.base);
       return p.slice(0, -1);
     });
-  }, [state]);
+  }, [state, base]);
 
   const redo = useCallback(() => {
     setFuture((fu) => {
       if (!fu.length) return fu;
       const next = fu[0]!;
-      setPast((p) => [...p, state]);
-      setState(next);
+      setPast((p) => [...p, { state, base }]);
+      setState(next.state);
+      setBase(next.base);
       return fu.slice(1);
     });
-  }, [state]);
+  }, [state, base]);
+
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -231,10 +293,106 @@ export function Editor({
     setOffset({ x: 0, y: 0 });
   };
 
+  /* ------------------------------------------------------------- AI actions */
+
+  /** Runs an AI job that produces a new base photo, with progress + history. */
+  const runAi = useCallback(
+    async (
+      tool: AiTool,
+      job: (report: (r: number) => void) => Promise<HTMLCanvasElement | null> | HTMLCanvasElement | null,
+      successMessage: string,
+    ) => {
+      if (busyTool) return;
+      setBusyTool(tool);
+      setAiProgress(0.03);
+      try {
+        // Let the spinner paint before the heavy synchronous pixel work starts.
+        await new Promise((r) => setTimeout(r, 30));
+        const result = await job(setAiProgress);
+        if (!result) return;
+        const img = await canvasToImage(result);
+        commitBase(img);
+        setAiProgress(1);
+        toast.success(successMessage);
+      } catch {
+        toast.error("That didn't work on this photo — try again");
+      } finally {
+        setBusyTool(null);
+        setAiProgress(0);
+      }
+    },
+    [busyTool, commitBase],
+  );
+
+  const handleRemoveBg = () =>
+    runAi(
+      "bg",
+      async (report) => {
+        const cut = await removeBackground(base, report);
+        setCutout(cut);
+        return cut;
+      },
+      "Background removed",
+    );
+
+  const handleBackground = (choice: BackgroundChoice) => {
+    if (!cutout) return;
+    void runAi("bg", () => composeBackground(cutout, base, choice), "Background updated");
+  };
+
+  const handleEraseObject = () => {
+    if (!maskStrokes.length) return;
+    void runAi(
+      "object",
+      (report) => {
+        const mask = buildMaskCanvas(base.width, base.height, maskStrokes);
+        report(0.4);
+        const out = inpaint(base, mask);
+        setMaskStrokes([]);
+        return out;
+      },
+      "Object removed",
+    );
+  };
+
+  const handleEnhance = (factor: 2 | 4) =>
+    runAi("enhance", (report) => {
+      report(0.3);
+      return upscaleEnhance(base, factor);
+    }, `Photo enhanced ${factor}×`);
+
+  const handleAutoAdjust = () => {
+    setBusyTool("auto");
+    setAiProgress(0.4);
+    try {
+      const patch = autoAdjust(base);
+      commit({ ...state, adjustments: { ...state.adjustments, ...patch } });
+      toast.success("Auto fix applied");
+    } catch {
+      toast.error("Auto fix didn't work on this photo");
+    } finally {
+      setBusyTool(null);
+      setAiProgress(0);
+    }
+  };
+
+  const handleRetouch = () =>
+    runAi("retouch", (report) => {
+      report(0.35);
+      return retouchOp(base, retouchSettings);
+    }, "Retouch applied");
+
+  const handleArt = (styleId: string) =>
+    runAi("art", (report) => {
+      report(0.35);
+      return applyArtStyle(base, styleId, artStrength);
+    }, "Style applied");
+
   const renderFull = (maxDimension: number | null) => {
     const canvas = document.createElement("canvas");
-    renderToCanvas(canvas, image, state, maxDimension ?? undefined);
+    renderToCanvas(canvas, base, state, maxDimension ?? undefined);
     return canvas;
+
   };
 
   const toBlob = (opts: ExportOptions) =>
@@ -490,7 +648,17 @@ export function Editor({
                 brush={brush}
               />
             )}
+            {maskMode && fit.w > 0 && (
+              <MaskLayer
+                width={fit.w}
+                height={fit.h}
+                strokes={maskStrokes}
+                brushSize={maskBrush}
+                onChange={setMaskStrokes}
+              />
+            )}
           </div>
+
 
           {showOriginal && (
             <span className="pointer-events-none absolute top-4 left-1/2 -translate-x-1/2 rounded-full bg-black/70 px-3 py-1 text-xs font-medium text-white">
@@ -541,7 +709,20 @@ export function Editor({
             </h2>
           </div>
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
-            <StackRow label="Base photo" value={`${image.width} × ${image.height}`} />
+            <button
+              type="button"
+              onClick={() => setTab("AI")}
+              className={cn(
+                "flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-xs font-semibold transition-colors",
+                tab === "AI"
+                  ? "bg-primary text-primary-foreground"
+                  : "border border-border bg-secondary hover:bg-muted",
+              )}
+            >
+              <Wand2 className="size-4" /> AI Tools
+            </button>
+            <StackRow label="Base photo" value={`${base.width} × ${base.height}`} />
+
             <StackRow label="Filter" value={activePreset?.name ?? "Original"} />
             <StackRow
               label="Geometry"
@@ -629,7 +810,7 @@ export function Editor({
                         <FilterThumb
                           key={preset.id}
                           preset={preset}
-                          source={image}
+                          source={base}
                           active={state.filterId === preset.id}
                           onSelect={() =>
                             commit({ ...state, filterId: preset.id, filterStrength: 100 })
@@ -641,6 +822,34 @@ export function Editor({
               ))}
             </div>
           )}
+
+          {tab === "AI" && (
+            <AiPanel
+              tool={aiTool}
+              onToolChange={setAiTool}
+              busyTool={busyTool}
+              progress={aiProgress}
+              hasCutout={!!cutout}
+              onRemoveBg={handleRemoveBg}
+              onBackground={handleBackground}
+              bgBlur={bgBlur}
+              onBgBlurChange={setBgBlur}
+              maskStrokes={maskStrokes.length}
+              brushSize={maskBrush}
+              onBrushSize={setMaskBrush}
+              onClearMask={() => setMaskStrokes([])}
+              onEraseObject={handleEraseObject}
+              onEnhance={handleEnhance}
+              onAutoAdjust={handleAutoAdjust}
+              retouch={retouchSettings}
+              onRetouchChange={(patch) => setRetouchSettings((r) => ({ ...r, ...patch }))}
+              onApplyRetouch={handleRetouch}
+              artStrength={artStrength}
+              onArtStrength={setArtStrength}
+              onApplyArt={handleArt}
+            />
+          )}
+
 
           {tab === "Text" && (
             <TextPanel
