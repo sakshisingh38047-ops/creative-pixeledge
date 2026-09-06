@@ -648,7 +648,17 @@ export function Editor({
                 brush={brush}
               />
             )}
+            {maskMode && fit.w > 0 && (
+              <MaskLayer
+                width={fit.w}
+                height={fit.h}
+                strokes={maskStrokes}
+                brushSize={maskBrush}
+                onChange={setMaskStrokes}
+              />
+            )}
           </div>
+
 
           {showOriginal && (
             <span className="pointer-events-none absolute top-4 left-1/2 -translate-x-1/2 rounded-full bg-black/70 px-3 py-1 text-xs font-medium text-white">
