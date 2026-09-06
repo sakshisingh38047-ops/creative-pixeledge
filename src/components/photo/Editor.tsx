@@ -709,7 +709,7 @@ export function Editor({
             </h2>
           </div>
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
-            <StackRow label="Base photo" value={`${image.width} × ${image.height}`} />
+            <StackRow label="Base photo" value={`${base.width} × ${base.height}`} />
             <StackRow label="Filter" value={activePreset?.name ?? "Original"} />
             <StackRow
               label="Geometry"
@@ -797,7 +797,7 @@ export function Editor({
                         <FilterThumb
                           key={preset.id}
                           preset={preset}
-                          source={image}
+                          source={base}
                           active={state.filterId === preset.id}
                           onSelect={() =>
                             commit({ ...state, filterId: preset.id, filterStrength: 100 })
