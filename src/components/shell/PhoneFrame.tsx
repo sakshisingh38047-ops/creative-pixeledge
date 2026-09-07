@@ -14,7 +14,7 @@ export function PhoneFrame({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="grid min-h-[100dvh] w-full place-items-center overflow-auto bg-canvas-bg p-6 lg:hidden xl:grid">
+    <div className="grid min-h-[100dvh] w-full place-items-center overflow-auto bg-canvas-bg p-6">
       <motion.div
         initial={{ opacity: 0, y: 24, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
