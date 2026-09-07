@@ -4,8 +4,8 @@ import { Images, Sparkles, Wand2, Layers, SlidersHorizontal, Sun, Moon } from "l
 const HIGHLIGHTS = [
   { icon: SlidersHorizontal, title: "Pro adjustments", body: "Exposure, curveless tone control, grain, vignette and more, live." },
   { icon: Sparkles, title: "60+ looks", body: "Cinematic, vintage, portrait and mono presets with strength control." },
-  { icon: Wand2, title: "AI tools", body: "Background removal, cleanup and upscaling arriving in the next stage." },
-  { icon: Layers, title: "Layers & text", body: "Text, stickers, brushes and layers coming right after." },
+  { icon: Wand2, title: "AI tools", body: "Background removal and swap, object eraser, HD enhance, auto fix and retouch." },
+  { icon: Layers, title: "Layers & text", body: "Text with 25+ fonts, 100+ stickers, brushes and a live layer stack." },
 ];
 
 export function HomeScreen({
