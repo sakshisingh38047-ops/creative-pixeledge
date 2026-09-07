@@ -529,6 +529,14 @@ export function Editor({
     setSelectedId(null);
   };
 
+  useEffect(() => {
+    if (focusTab) setTab(focusTab as Tab);
+  }, [focusTab]);
+
+  useEffect(() => {
+    if (exportSignal > 0) setExportOpen(true);
+  }, [exportSignal]);
+
   const groupSliders = adjustmentMeta.filter((m) => m.group === tab);
   const activePreset = filterPresets.find((p) => p.id === state.filterId);
   const isEdited = JSON.stringify(state) !== JSON.stringify(defaultEditState);
