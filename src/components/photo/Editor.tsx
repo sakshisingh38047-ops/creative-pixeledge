@@ -535,7 +535,12 @@ export function Editor({
   const layerCount = state.overlays.items.length;
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-surface-1">
+    <div
+      className={cn(
+        "flex h-full flex-col overflow-hidden bg-surface-1",
+        bottomInset && "pb-[68px]",
+      )}
+    >
       {/* Top bar */}
       <header className="flex items-center justify-between gap-2 border-b border-border bg-surface-2 px-2 py-2 sm:px-3">
         <div className="flex items-center gap-1">
