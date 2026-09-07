@@ -109,12 +109,18 @@ export function Editor({
   onBack,
   theme,
   onToggleTheme,
+  focusTab,
+  exportSignal = 0,
+  bottomInset = false,
 }: {
   image: HTMLImageElement;
   fileName: string;
   onBack: () => void;
   theme: "dark" | "light";
   onToggleTheme: () => void;
+  focusTab?: string | null;
+  exportSignal?: number;
+  bottomInset?: boolean;
 }) {
   const [state, setState] = useState<EditState>(defaultEditState);
   const [base, setBase] = useState<HTMLImageElement>(image);
@@ -523,13 +529,26 @@ export function Editor({
     setSelectedId(null);
   };
 
+  useEffect(() => {
+    if (focusTab) setTab(focusTab as Tab);
+  }, [focusTab]);
+
+  useEffect(() => {
+    if (exportSignal > 0) setExportOpen(true);
+  }, [exportSignal]);
+
   const groupSliders = adjustmentMeta.filter((m) => m.group === tab);
   const activePreset = filterPresets.find((p) => p.id === state.filterId);
   const isEdited = JSON.stringify(state) !== JSON.stringify(defaultEditState);
   const layerCount = state.overlays.items.length;
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-surface-1">
+    <div
+      className={cn(
+        "flex h-full flex-col overflow-hidden bg-surface-1",
+        bottomInset && "pb-[68px]",
+      )}
+    >
       {/* Top bar */}
       <header className="flex items-center justify-between gap-2 border-b border-border bg-surface-2 px-2 py-2 sm:px-3">
         <div className="flex items-center gap-1">

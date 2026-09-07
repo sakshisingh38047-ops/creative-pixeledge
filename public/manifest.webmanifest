@@ -1,0 +1,17 @@
+{
+  "name": "PhotoPro Editor",
+  "short_name": "PhotoPro",
+  "description": "Pro photo editing with AI tools, 60+ filters, text, stickers and HD export — right in your browser.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#131417",
+  "theme_color": "#131417",
+  "categories": ["photo", "graphics", "productivity"],
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
