@@ -109,12 +109,18 @@ export function Editor({
   onBack,
   theme,
   onToggleTheme,
+  focusTab,
+  exportSignal = 0,
+  bottomInset = false,
 }: {
   image: HTMLImageElement;
   fileName: string;
   onBack: () => void;
   theme: "dark" | "light";
   onToggleTheme: () => void;
+  focusTab?: string | null;
+  exportSignal?: number;
+  bottomInset?: boolean;
 }) {
   const [state, setState] = useState<EditState>(defaultEditState);
   const [base, setBase] = useState<HTMLImageElement>(image);
