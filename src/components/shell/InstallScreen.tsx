@@ -31,7 +31,7 @@ export function InstallScreen() {
 
   return (
     <div className="no-scrollbar h-full overflow-y-auto bg-background pb-28">
-      <div className="px-5 pt-8">
+      <div className="px-5 pt-14">
         <div className="flex items-start gap-4">
           <img
             src={appIcon}
