@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { Download, Share2, ShieldCheck, Star, Sparkles, Check } from "lucide-react";
 import { toast } from "sonner";
-import appIcon from "@/assets/app-icon.png";
+const appIcon = "/app-icon.png";
 import shot1 from "@/assets/shot-1.jpg";
 import shot2 from "@/assets/shot-2.jpg";
 import shot3 from "@/assets/shot-3.jpg";

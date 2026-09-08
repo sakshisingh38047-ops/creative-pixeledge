@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Download, X } from "lucide-react";
-import appIcon from "@/assets/app-icon.png";
+const appIcon = "/app-icon.png";
 
 export function InstallBanner({
   show,
