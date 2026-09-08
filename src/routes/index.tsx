@@ -39,7 +39,7 @@ function Index() {
   const [nav, setNav] = useState<NavKey>("home");
   const [focusTab, setFocusTab] = useState<string | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
-  const { available, installed, install } = usePwaInstall();
+  const { installed, install } = usePwaInstall();
 
   useEffect(() => {
     document.documentElement.classList.toggle("light", theme === "light");
@@ -115,7 +115,6 @@ function Index() {
           onDismiss={() => setBannerDismissed(true)}
         />
         <BottomNav active={nav} onSelect={selectNav} />
-        {available ? null : null}
       </div>
     </PhoneFrame>
   );
